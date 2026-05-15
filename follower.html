@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>3PiP V35 Final</title>
+    <style id="v35-styles">
+        body {
+            margin: 0; padding: 0; 
+            background: #000000; 
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #inner-content {
+            /* 絕對遵循你的 V35 設定 */
+            padding-top: 25px;    
+            padding-bottom: 30px; 
+            padding-left: 28px;   
+            padding-right: 28px;
+            
+            flex: 1;
+            display: flex; 
+            flex-direction: column; 
+            justify-content: flex-end; /* 關鍵：新內容在底，舊內容自然上推 */
+            
+            /* V35 經典等寬/等線字體對位 */
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 16.5px; 
+            font-weight: 500; 
+            letter-spacing: -0.2px; 
+            line-height: 1.5; 
+            
+            color: rgba(255, 255, 255, 0.88); 
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            
+            white-space: pre-wrap; 
+            word-break: break-word;
+            text-align: left;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="inner-content">點擊頁面啟動 V35 PIP</div>
+
+    <script>
+        const inner = document.getElementById('inner-content');
+        let fullText = "";
+        let lastProcessedText = "";
+
+        async function startV35PIP() {
+            const pipWindow = await window.documentPictureInPicture.requestWindow({
+                width: 550,
+                height: 400, 
+            });
+
+            // 拷貝樣式
+            const style = document.createElement('style');
+            style.textContent = document.getElementById('v35-styles').textContent;
+            pipWindow.document.head.appendChild(style);
+
+            // 建立內容容器
+            const pipInner = document.createElement('div');
+            pipInner.id = 'inner-content';
+            pipWindow.document.body.appendChild(pipInner);
+
+            setupSocket(pipInner, pipWindow);
+        }
+
+        function setupSocket(targetEl, pipWin) {
+            const socket = new WebSocket('ws://localhost:8080');
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const newInput = data.text;
+
+                if (!newInput || newInput === lastProcessedText) return;
+
+                // --- V35 核心累積邏輯 ---
+                if (newInput.startsWith(lastProcessedText)) {
+                    let added = newInput.substring(lastProcessedText.length);
+                    if (added) {
+                        // 處理空格對位
+                        if (fullText.length > 0 && !fullText.endsWith(' ') && !added.startsWith(' ')) {
+                            fullText += " ";
+                        }
+                        fullText += added;
+                    }
+                } else {
+                    // 判定是否為重複出現的舊片段，若不是，則視為新流出的文字並累計
+                    const recentTail = fullText.slice(-150); 
+                    if (!recentTail.includes(newInput)) {
+                        fullText += (fullText.length > 0 ? "  " : "") + newInput;
+                    }
+                }
+                
+                lastProcessedText = newInput;
+                targetEl.textContent = fullText;
+
+                // 誠實的物理滾動，確保最新一行在底部
+                pipWin.document.body.scrollTop = pipWin.document.body.scrollHeight;
+            };
+
+            socket.onopen = () => {
+                fullText = "";
+                targetEl.textContent = "";
+                console.log("🌊 V35 水管已接通，開始累積文字...");
+            };
+        }
+
+        window.addEventListener('click', startV35PIP, { once: true });
+    </script>
+</body>
+</html>

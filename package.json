@@ -1,0 +1,15 @@
+{
+  "name": "youtube_pip_ws_pip",
+  "version": "1.0.0",
+  "description": "",
+  "main": "follower.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.20.1"
+  }
+}

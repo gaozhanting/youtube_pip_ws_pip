@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "3PiP Leader Node",
+  "version": "1.0",
+  "description": "將 YouTube 字幕流向本地水管",
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/watch*"],
+      "js": ["content.js"]
+    }
+  ],
+  "permissions": ["nativeMessaging"],
+  "host_permissions": [
+    "ws://localhost:8080/",
+    "*://www.youtube.com/*"
+  ]
+}
