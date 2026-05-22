@@ -46,7 +46,6 @@
         let lastProcessedText = "";
         let pipWindow = null;
         let pipInner = null;
-        let closeTimer = null;
 
         async function openPiP() {
             if (pipWindow) return;
@@ -66,18 +65,6 @@
             pipInner.id = 'inner-content';
             pipInner.textContent = fullText;
             pipWindow.document.body.appendChild(pipInner);
-        }
-
-        function closePiP() {
-            if (pipWindow) {
-                pipWindow.close();
-                pipWindow = null;
-                pipInner = null;
-            }
-        }
-
-        function cancelClose() {
-            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
         }
 
         window.addEventListener('click', openPiP);
@@ -114,15 +101,6 @@
                     inner.textContent = fullText;
                 }
 
-                // Play state → auto open/close PiP
-                if (data.isPaused) {
-                    cancelClose();
-                    closeTimer = setTimeout(closePiP, 2000);
-                } else {
-                    cancelClose();
-                    // Note: can't openPiP here (no user gesture),
-                    // server handles opening via CDP click
-                }
             };
 
             socket.onopen = () => {
@@ -132,7 +110,6 @@
             };
 
             socket.onclose = () => {
-                cancelClose();
                 setTimeout(setupSocket, 2000);
             };
         }
