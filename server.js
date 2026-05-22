@@ -1,14 +1,16 @@
-const { WebSocketServer } = require('ws');
-const { createServer } = require('http');
+const http = require('http');
 const { readFileSync } = require('fs');
 const { spawn } = require('child_process');
+const WS = require('ws');
+const { WebSocketServer } = WS;
 
 const PORT = 8080;
+const CDP_PORT = 9223;
 const BRAVE_BIN = '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
 const followerHTML = readFileSync(`${__dirname}/follower.html`, 'utf-8');
 
 // HTTP server
-const http = createServer((req, res) => {
+const httpServer = http.createServer((req, res) => {
   if (req.url === '/' || req.url === '/follower.html') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(followerHTML);
@@ -19,75 +21,73 @@ const http = createServer((req, res) => {
 });
 
 // WebSocket relay
-const wss = new WebSocketServer({ server: http });
-
+const wss = new WebSocketServer({ server: httpServer });
 let brave = null;
 let pauseTimer = null;
 
 function killBrave() {
-  if (brave) {
-    brave.kill();
-    brave = null;
-    console.log('⏸️  字幕 PiP 已關閉');
-  }
+  if (brave) { brave.kill(); brave = null; console.log('⏸️  字幕 PiP 已關閉'); }
 }
 
 function cancelKill() {
-  if (pauseTimer) {
-    clearTimeout(pauseTimer);
-    pauseTimer = null;
-  }
+  if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+}
+
+// CDP: find follower page, then click to trigger documentPictureInPicture
+function cdpClick() {
+  const attempt = (n) => {
+    if (n > 20) return; // give up after 10s
+    http.get(`http://localhost:${CDP_PORT}/json`, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const target = JSON.parse(data).find(t => t.url.includes(`localhost:${PORT}`));
+          if (!target) return setTimeout(() => attempt(n + 1), 500);
+          const cdp = new WS(target.webSocketDebuggerUrl);
+          cdp.on('open', () => {
+            cdp.send(JSON.stringify({ id: 1, method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: 200, y: 200, button: 'left', clickCount: 1 } }));
+            cdp.send(JSON.stringify({ id: 2, method: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: 200, y: 200, button: 'left', clickCount: 1 } }));
+            cdp.close();
+            console.log('🖱️  已自動觸發字幕 PiP');
+          });
+        } catch (_) { setTimeout(() => attempt(n + 1), 500); }
+      });
+    }).on('error', () => setTimeout(() => attempt(n + 1), 500));
+  };
+  setTimeout(() => attempt(1), 1500); // wait for Brave to start
 }
 
 function spawnBrave() {
-  if (brave) return; // already running
+  if (brave) return;
   brave = spawn(BRAVE_BIN, [
     '--new-window',
     `http://localhost:${PORT}`,
+    `--remote-debugging-port=${CDP_PORT}`,
     '--user-data-dir=/tmp/brave-caption-pip',
   ]);
   brave.on('exit', () => { brave = null; });
   console.log('🚀 已啟動字幕 PiP');
+  cdpClick();
 }
 
 function handlePlayState(isPaused) {
-  if (isPaused) {
-    cancelKill();
-    pauseTimer = setTimeout(killBrave, 2000);
-  } else {
-    cancelKill();
-    spawnBrave();
-  }
+  if (isPaused) { cancelKill(); pauseTimer = setTimeout(killBrave, 2000); }
+  else          { cancelKill(); spawnBrave(); }
 }
 
 wss.on('connection', (ws) => {
   console.log('🔗 一個組件已連入水管');
-
   ws.on('message', (data) => {
     const message = data.toString('utf-8');
-    wss.clients.forEach((client) => {
-      if (client.readyState === 1) client.send(message);
-    });
-
-    // Parse play state for auto launch/kill
-    try {
-      const { isPaused } = JSON.parse(message);
-      handlePlayState(isPaused);
-    } catch (_) {}
+    wss.clients.forEach(c => { if (c.readyState === 1) c.send(message); });
+    try { handlePlayState(JSON.parse(message).isPaused); } catch (_) {}
   });
-
   ws.on('close', () => console.log('❌ 一個組件斷開了連接'));
 });
 
-// Cleanup
-function shutdown() {
-  cancelKill();
-  killBrave();
-  process.exit();
-}
+function shutdown() { cancelKill(); killBrave(); process.exit(); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-http.listen(PORT, () => {
-  console.log(`🌊 3PiP 水管已在 http://localhost:${PORT} 啟動`);
-});
+httpServer.listen(PORT, () => console.log(`🌊 3PiP 水管已在 http://localhost:${PORT} 啟動`));
