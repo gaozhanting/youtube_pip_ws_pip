@@ -36,11 +36,9 @@
         }
     </style>
 </head>
-<body>
-    <div id="inner-content">點擊頁面啟動 V35 PIP</div>
+<body style="background:#000">
 
     <script>
-        const inner = document.getElementById('inner-content');
         document.title = "YT";
         let fullText = "";
         let lastProcessedText = "";
@@ -98,14 +96,12 @@
                         pipInner.textContent = fullText;
                         pipWindow.document.body.scrollTop = pipWindow.document.body.scrollHeight;
                     }
-                    inner.textContent = fullText;
                 }
 
             };
 
             socket.onopen = () => {
                 fullText = "";
-                inner.textContent = "";
                 console.log("🌊 V35 水管已接通");
             };
 
