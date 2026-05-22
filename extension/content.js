@@ -50,7 +50,7 @@ const grabAction = () => {
 // 3. 綁定視頻播放/暫停事件
 function bindVideoEvents() {
     const video = document.querySelector('video');
-    if (!video) return;
+    if (!video) { setTimeout(bindVideoEvents, 500); return; }
 
     video.addEventListener('play', () => sendStatus(false));
     video.addEventListener('playing', () => sendStatus(false));
