@@ -5,37 +5,31 @@
     <title>3PiP V35 Final</title>
     <style id="v35-styles">
         body {
-            margin: 0; padding: 0; 
-            background: #000000; 
+            margin: 0; padding: 0;
+            background: #000000;
             overflow: hidden;
             display: flex;
             flex-direction: column;
             height: 100vh;
         }
         #inner-content {
-            /* 絕對遵循你的 V35 設定 */
-            padding-top: 25px;    
-            padding-bottom: 30px; 
-            padding-left: 28px;   
+            padding-top: 25px;
+            padding-bottom: 30px;
+            padding-left: 28px;
             padding-right: 28px;
-            
             flex: 1;
-            display: flex; 
-            flex-direction: column; 
-            justify-content: flex-end; /* 關鍵：新內容在底，舊內容自然上推 */
-            
-            /* V35 經典等寬/等線字體對位 */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            font-size: 22px; 
-            font-weight: 500; 
-            letter-spacing: -0.2px; 
-            line-height: 1.5; 
-            
-            color: rgba(255, 255, 255, 0.88); 
+            font-size: 22px;
+            font-weight: 500;
+            letter-spacing: -0.2px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.88);
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
-            
-            white-space: pre-wrap; 
+            white-space: pre-wrap;
             word-break: break-word;
             text-align: left;
             overflow: hidden;
@@ -50,68 +44,100 @@
         document.title = "YT";
         let fullText = "";
         let lastProcessedText = "";
+        let pipWindow = null;
+        let pipInner = null;
+        let closeTimer = null;
 
-        async function startV35PIP() {
-            const pipWindow = await window.documentPictureInPicture.requestWindow({
-                width: 550,
-                height: 400, 
+        async function openPiP() {
+            if (pipWindow) return;
+            pipWindow = await window.documentPictureInPicture.requestWindow({
+                width: 550, height: 400,
+            });
+            pipWindow.addEventListener('pagehide', () => {
+                pipWindow = null;
+                pipInner = null;
             });
 
-            // 拷貝樣式
             const style = document.createElement('style');
             style.textContent = document.getElementById('v35-styles').textContent;
             pipWindow.document.head.appendChild(style);
 
-            // 建立內容容器
-            const pipInner = document.createElement('div');
+            pipInner = document.createElement('div');
             pipInner.id = 'inner-content';
+            pipInner.textContent = fullText;
             pipWindow.document.body.appendChild(pipInner);
-
-            setupSocket(pipInner, pipWindow);
         }
 
-        function setupSocket(targetEl, pipWin) {
+        function closePiP() {
+            if (pipWindow) {
+                pipWindow.close();
+                pipWindow = null;
+                pipInner = null;
+            }
+        }
+
+        function cancelClose() {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        }
+
+        window.addEventListener('click', openPiP);
+
+        // WebSocket
+        function setupSocket() {
             const socket = new WebSocket('ws://localhost:8080');
 
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 const newInput = data.text;
 
-                if (!newInput || newInput === lastProcessedText) return;
-
-                // --- V35 核心累積邏輯 ---
-                if (newInput.startsWith(lastProcessedText)) {
-                    let added = newInput.substring(lastProcessedText.length);
-                    if (added) {
-                        // 處理空格對位
-                        if (fullText.length > 0 && !fullText.endsWith(' ') && !added.startsWith(' ')) {
-                            fullText += " ";
+                if (newInput && newInput !== lastProcessedText) {
+                    if (newInput.startsWith(lastProcessedText)) {
+                        let added = newInput.substring(lastProcessedText.length);
+                        if (added) {
+                            if (fullText.length > 0 && !fullText.endsWith(' ') && !added.startsWith(' ')) {
+                                fullText += " ";
+                            }
+                            fullText += added;
                         }
-                        fullText += added;
+                    } else {
+                        const recentTail = fullText.slice(-150);
+                        if (!recentTail.includes(newInput)) {
+                            fullText += (fullText.length > 0 ? "  " : "") + newInput;
+                        }
                     }
-                } else {
-                    // 判定是否為重複出現的舊片段，若不是，則視為新流出的文字並累計
-                    const recentTail = fullText.slice(-150); 
-                    if (!recentTail.includes(newInput)) {
-                        fullText += (fullText.length > 0 ? "  " : "") + newInput;
-                    }
-                }
-                
-                lastProcessedText = newInput;
-                targetEl.textContent = fullText;
+                    lastProcessedText = newInput;
 
-                // 誠實的物理滾動，確保最新一行在底部
-                pipWin.document.body.scrollTop = pipWin.document.body.scrollHeight;
+                    if (pipInner) {
+                        pipInner.textContent = fullText;
+                        pipWindow.document.body.scrollTop = pipWindow.document.body.scrollHeight;
+                    }
+                    inner.textContent = fullText;
+                }
+
+                // Play state → auto open/close PiP
+                if (data.isPaused) {
+                    cancelClose();
+                    closeTimer = setTimeout(closePiP, 2000);
+                } else {
+                    cancelClose();
+                    // Note: can't openPiP here (no user gesture),
+                    // server handles opening via CDP click
+                }
             };
 
             socket.onopen = () => {
                 fullText = "";
-                targetEl.textContent = "";
-                console.log("🌊 V35 水管已接通，開始累積文字...");
+                inner.textContent = "";
+                console.log("🌊 V35 水管已接通");
+            };
+
+            socket.onclose = () => {
+                cancelClose();
+                setTimeout(setupSocket, 2000);
             };
         }
 
-        window.addEventListener('click', startV35PIP, { once: true });
+        setupSocket();
     </script>
 </body>
 </html>
