@@ -24,7 +24,7 @@ const httpServer = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server: httpServer });
 let brave = null;
 
-// CDP: click follower page to trigger documentPictureInPicture
+// CDP: click to open PiP, then minimize the Brave window
 function cdpClick() {
   const attempt = (n) => {
     if (n > 20) return;
@@ -37,11 +37,22 @@ function cdpClick() {
           if (!target) return setTimeout(() => attempt(n + 1), 500);
           const cdp = new WS(target.webSocketDebuggerUrl);
           cdp.on('open', () => {
-            cdp.send(JSON.stringify({ id: 1, method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: 200, y: 200, button: 'left', clickCount: 1 } }));
-            cdp.send(JSON.stringify({ id: 2, method: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: 200, y: 200, button: 'left', clickCount: 1 } }));
-            cdp.close();
-            console.log('🖱️  已觸發字幕 PiP');
+            // Step 1: click to trigger documentPictureInPicture
+            cdp.send(JSON.stringify({ id: 1, method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: 50, y: 50, button: 'left', clickCount: 1 } }));
+            cdp.send(JSON.stringify({ id: 2, method: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: 50, y: 50, button: 'left', clickCount: 1 } }));
+            // Step 2: get window ID
+            cdp.send(JSON.stringify({ id: 3, method: 'Browser.getWindowForTarget' }));
           });
+          cdp.on('message', (raw) => {
+            try {
+              const msg = JSON.parse(raw);
+              if (msg.id === 3 && msg.result) {
+                cdp.send(JSON.stringify({ id: 4, method: 'Browser.setWindowBounds', params: { windowId: msg.result.windowId, bounds: { windowState: 'minimized' } } }));
+              }
+              if (msg.id === 4) cdp.close();
+            } catch (_) {}
+          });
+          console.log('🖱️  已觸發字幕 PiP');
         } catch (_) { setTimeout(() => attempt(n + 1), 500); }
       });
     }).on('error', () => setTimeout(() => attempt(n + 1), 500));
@@ -52,7 +63,7 @@ function cdpClick() {
 function spawnBrave() {
   if (brave) return;
   brave = spawn(BRAVE_BIN, [
-    `http://localhost:${PORT}`,
+    `--app=http://localhost:${PORT}`,
     `--remote-debugging-port=${CDP_PORT}`,
     '--user-data-dir=/tmp/brave-caption-pip',
     '--no-first-run',
